@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bærum Beredskapsmodul</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://unpkg.com/d3@7/dist/d3.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <span class="logo-icon">🛡️</span>
+    <div class="logo-text">
+      <div class="logo-title">Bærum</div>
+      <div class="logo-sub">Beredskapsmodul</div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Oversikt</div>
+    <button class="nav-item active" data-tab="hendelser">
+      <span class="nav-icon">⚡</span><span>Hendelser</span>
+    </button>
+    <button class="nav-item" data-tab="situasjon">
+      <span class="nav-icon">📊</span><span>Situasjonsbilde</span>
+      <span class="nav-badge hidden" id="nav-alvorlighet"></span>
+    </button>
+
+    <div class="nav-section-label">Håndtering</div>
+    <button class="nav-item" data-tab="tiltakskort">
+      <span class="nav-icon">📋</span><span>Tiltakskort</span>
+    </button>
+    <button class="nav-item" data-tab="smitte">
+      <span class="nav-icon">🦠</span><span>Smittesporing</span>
+      <span class="nav-count hidden" id="nav-smitte-count"></span>
+    </button>
+    <button class="nav-item" data-tab="logg">
+      <span class="nav-icon">📝</span><span>Hendelseslogg</span>
+      <span class="nav-count hidden" id="nav-logg-count"></span>
+    </button>
+
+    <div class="nav-section-label">Ressurser</div>
+    <button class="nav-item" data-tab="ressurser">
+      <span class="nav-icon">🏥</span><span>Ressursoversikt</span>
+    </button>
+    <button class="nav-item" data-tab="kontakter">
+      <span class="nav-icon">📞</span><span>Kontakter</span>
+    </button>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="clock-block">
+      <div class="clock-time" id="clock-time">--:--:--</div>
+      <div class="clock-date" id="clock-date">---</div>
+    </div>
+    <div class="aktiv-status" id="aktiv-status">
+      <div class="status-dot inactive"></div>
+      <span>Ingen aktiv hendelse</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ── MAIN ── -->
+<div class="main-wrapper">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="topbar-left" id="topbar-breadcrumb">
+      <span class="breadcrumb-page">Hendelser</span>
+    </div>
+    <div class="topbar-right">
+      <div id="aktiv-badge" class="aktiv-badge hidden"></div>
+      <button class="btn btn-ghost" onclick="openModal('modal-hendelse')">+ Ny hendelse</button>
+    </div>
+  </header>
+
+  <!-- Demo-banner -->
+  <div class="demo-banner">
+    <span class="demo-label">🎭 Demo</span>
+    <div id="demo-knapper"></div>
+    <button class="demo-reset-btn" onclick="resetDemo()" title="Nullstill alle data">↺ Nullstill</button>
+  </div>
+
+  <!-- TAB: HENDELSER OVERSIKT -->
+  <section id="tab-hendelser" class="tab-content active">
+    <div class="hendelser-layout">
+
+      <!-- Liste -->
+      <div class="hendelser-liste-panel">
+        <div class="panel-header">
+          <h2>Hendelser – Bærum kommune</h2>
+          <div class="filter-row">
+            <button class="filter-chip active" onclick="filterHendelser('alle', this)">Alle</button>
+            <button class="filter-chip" onclick="filterHendelser('kritisk', this)">Kritisk</button>
+            <button class="filter-chip" onclick="filterHendelser('smitte', this)">Smitte</button>
+            <button class="filter-chip" onclick="filterHendelser('infrastruktur', this)">Infrastruktur</button>
+          </div>
+        </div>
+        <div id="hendelser-liste"></div>
+      </div>
+
+      <!-- Kart -->
+      <div class="hendelser-kart-panel">
+        <div id="hendelser-kart"></div>
+        <div class="kart-hint">Klikk på en hendelse i listen eller på kartet</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- TAB: SITUASJON -->
+  <section id="tab-situasjon" class="tab-content">
+    <div class="page-content">
+      <div id="ingen-hendelse" class="empty-state">
+        <div class="empty-icon">🛡️</div>
+        <h3>Ingen aktiv hendelse</h3>
+        <p>Last inn et demo-scenario eller opprett en ny hendelse for å starte håndtering.</p>
+        <button class="btn btn-primary" onclick="openModal('modal-hendelse')">Opprett hendelse</button>
+      </div>
+
+      <div id="aktiv-hendelse-panel" class="hidden">
+        <div id="hendelse-kort" class="hendelse-hero"></div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Situasjonsoversikt</div>
+            <div id="situasjon-oversikt"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">ROS – Risikovurdering</div>
+            <div id="ros-liste"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header-row">
+            <div class="card-title">Ressurskart – Bærum</div>
+            <span class="pill pill-muted">OpenStreetMap</span>
+          </div>
+          <div id="kart" style="height:420px;border-radius:8px;"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header-row">
+            <div class="card-title">Siste loggoppføringer</div>
+            <button class="btn btn-ghost btn-sm" onclick="switchTab('logg')">Se alle →</button>
+          </div>
+          <div id="situasjon-logg"></div>
+        </div>
+
+        <div class="actions-row">
+          <button class="btn btn-secondary" onclick="genererRapport()">📄 Situasjonsrapport</button>
+          <button class="btn btn-danger" onclick="avsluttHendelse()">✕ Avslutt hendelse</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB: TILTAKSKORT -->
+  <section id="tab-tiltakskort" class="tab-content">
+    <div class="page-content">
+      <div class="page-header">
+        <h2>Tiltakskort</h2>
+        <select id="tiltakskort-velger" onchange="lastTiltakskort(this.value)" class="select-input">
+          <option value="">— Velg hendelsestype —</option>
+        </select>
+      </div>
+      <div id="tiltakskort-innhold">
+        <div class="empty-state"><div class="empty-icon">📋</div><p>Velg hendelsestype over.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB: SMITTE -->
+  <section id="tab-smitte" class="tab-content">
+    <div class="page-content">
+      <div class="page-header">
+        <h2>Smittesporing og utbruddshåndtering</h2>
+        <button class="btn btn-primary" onclick="openModal('modal-smitte')">+ Registrer tilfelle</button>
+      </div>
+
+      <!-- Stat cards (always visible) -->
+      <div class="stat-row" id="smitte-stats">
+        <div class="stat-card stat-red"><div class="stat-num" id="s-bekreftet">0</div><div class="stat-lbl">Bekreftet</div></div>
+        <div class="stat-card stat-orange"><div class="stat-num" id="s-mistenkt">0</div><div class="stat-lbl">Mistenkt</div></div>
+        <div class="stat-card stat-yellow"><div class="stat-num" id="s-kontakter">0</div><div class="stat-lbl">Nærkontakter</div></div>
+        <div class="stat-card stat-blue"><div class="stat-num" id="s-total">0</div><div class="stat-lbl">Totalt</div></div>
+      </div>
+
+      <!-- Sub-tabs -->
+      <div class="sub-tabs">
+        <button class="sub-tab active" data-stab="nettverk">🕸 Smittenettverk</button>
+        <button class="sub-tab" data-stab="oversikt">📈 Utbruddsovervåking</button>
+        <button class="sub-tab" data-stab="tilfeller">👤 Tilfeller</button>
+        <button class="sub-tab" data-stab="tiltak">✅ Tiltaksoppfølging</button>
+        <button class="sub-tab" data-stab="eksponeringer">📍 Eksponeringer</button>
+        <button class="sub-tab" data-stab="beslutning">🧭 Beslutningsstøtte</button>
+      </div>
+
+      <!-- Sub-tab: Nettverk -->
+      <div id="stab-nettverk" class="stab-content active">
+        <div class="card">
+          <div class="card-header-row">
+            <div class="card-title">Smittenettverk</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="nett-legend"><span class="nett-dot dot-bekreftet"></span>Bekreftet</span>
+              <span class="nett-legend"><span class="nett-dot dot-mistenkt"></span>Mistenkt</span>
+              <span class="nett-legend"><span class="nett-dot dot-naerkontakt"></span>Nærkontakt</span>
+              <button class="btn btn-ghost btn-sm" onclick="resetNettverkZoom()">⟲ Reset</button>
+            </div>
+          </div>
+          <div id="smitte-nettverk"></div>
+        </div>
+      </div>
+
+      <!-- Sub-tab: Oversikt -->
+      <div id="stab-oversikt" class="stab-content hidden">
+        <div class="grid-2">
+          <div class="card"><div class="card-title">Epidemiologisk kurve</div><div id="epi-kurve"></div></div>
+          <div class="card"><div class="card-title">Berørte institusjoner</div><div id="berorte-inst"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-header-row">
+            <div class="card-title">Geografisk spredning</div>
+            <span class="pill pill-muted">OpenStreetMap</span>
+          </div>
+          <div id="smitte-kart" style="height:320px;border-radius:8px;"></div>
+        </div>
+      </div>
+
+      <!-- Sub-tab: Tilfeller -->
+      <div id="stab-tilfeller" class="stab-content hidden">
+        <div class="card">
+          <div class="card-header-row">
+            <div class="card-title">Registrerte tilfeller</div>
+            <button class="btn btn-primary btn-sm" onclick="openModal('modal-smitte')">+ Registrer</button>
+          </div>
+          <div id="smitte-liste"></div>
+        </div>
+      </div>
+
+      <!-- Sub-tab: Tiltak -->
+      <div id="stab-tiltak" class="stab-content hidden">
+        <div class="card">
+          <div class="card-header-row">
+            <div class="card-title">Tiltaksoppfølging</div>
+            <button class="btn btn-primary btn-sm" onclick="openModal('modal-tiltak')">+ Nytt tiltak</button>
+          </div>
+          <div id="tiltak-liste"></div>
+        </div>
+      </div>
+
+      <!-- Sub-tab: Eksponeringer -->
+      <div id="stab-eksponeringer" class="stab-content hidden">
+        <div class="card">
+          <div class="card-header-row">
+            <div class="card-title">Eksponeringshendelser</div>
+            <button class="btn btn-primary btn-sm" onclick="openModal('modal-eksponering')">+ Registrer</button>
+          </div>
+          <div id="eksponeringer-liste"></div>
+        </div>
+      </div>
+
+      <!-- Sub-tab: Beslutningsstøtte -->
+      <div id="stab-beslutning" class="stab-content hidden">
+        <div class="card">
+          <div class="card-header-row">
+            <div class="card-title">Smittevern – beslutningsstøtte</div>
+            <select id="veileder-velger" onchange="lastVeileder(this.value)" class="select-input" style="max-width:200px">
+              <option value="">— Velg sykdom —</option>
+              <option value="norovirus">Norovirus</option>
+              <option value="influensa">Influensa</option>
+              <option value="meslinger">Meslinger</option>
+              <option value="legionella">Legionella</option>
+              <option value="tuberkulose">Tuberkulose (TB)</option>
+              <option value="meningokokk">Meningokokk</option>
+              <option value="e_coli">EHEC / VTEC (E. coli)</option>
+              <option value="generell">Generell</option>
+            </select>
+          </div>
+          <div id="veileder-innhold"></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- TAB: LOGG -->
+  <section id="tab-logg" class="tab-content">
+    <div class="page-content">
+      <div class="page-header">
+        <h2>Hendelseslogg</h2>
+        <button class="btn btn-primary" onclick="openModal('modal-logg')">+ Ny oppføring</button>
+      </div>
+      <div id="logg-innhold"></div>
+    </div>
+  </section>
+
+  <!-- TAB: RESSURSER -->
+  <section id="tab-ressurser" class="tab-content">
+    <div class="page-content">
+      <div class="page-header"><h2>Ressursoversikt – Bærum</h2></div>
+      <div id="ressurser-innhold"></div>
+    </div>
+  </section>
+
+  <!-- TAB: KONTAKTER -->
+  <section id="tab-kontakter" class="tab-content">
+    <div class="page-content">
+      <div class="page-header">
+        <h2>Varsling og kontakter</h2>
+        <input type="text" id="kontakt-filter" placeholder="Søk navn eller rolle…" oninput="filterKontakter(this.value)" class="search-input">
+      </div>
+      <div id="kontakter-innhold"></div>
+    </div>
+  </section>
+
+</div><!-- /.main-wrapper -->
+
+<!-- ══ MODALER ══════════════════════════════════════════════════════════════ -->
+
+<div id="modal-hendelse" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Opprett ny hendelse</h3>
+      <button onclick="closeModal('modal-hendelse')" class="close-btn">✕</button>
+    </div>
+    <form onsubmit="opprettHendelse(event)">
+      <label>Hendelsestype *
+        <select id="h-type" required onchange="oppdaterTittelForslag()">
+          <option value="">— Velg —</option>
+        </select>
+      </label>
+      <label>Tittel *
+        <input id="h-tittel" type="text" required placeholder="Kort beskrivende tittel">
+      </label>
+      <label>Beskrivelse
+        <textarea id="h-beskrivelse" rows="3" placeholder="Hva har skjedd?"></textarea>
+      </label>
+      <label>Lokasjon *
+        <input id="h-lokasjon" type="text" required placeholder="Sted / adresse">
+      </label>
+      <label>Alvorlighetsgrad *
+        <select id="h-alvorlighet" required>
+          <option value="lav">Lav</option>
+          <option value="middels" selected>Middels</option>
+          <option value="høy">Høy</option>
+          <option value="kritisk">Kritisk</option>
+        </select>
+      </label>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-hendelse')">Avbryt</button>
+        <button type="submit" class="btn btn-primary">Opprett hendelse</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="modal-logg" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Ny loggføring</h3>
+      <button onclick="closeModal('modal-logg')" class="close-btn">✕</button>
+    </div>
+    <form onsubmit="leggTilLogg(event)">
+      <label>Type
+        <select id="l-type">
+          <option value="beslutning">⚖️ Beslutning</option>
+          <option value="varsling">📡 Varsling</option>
+          <option value="tiltak">✅ Tiltak</option>
+          <option value="observasjon">👁 Observasjon</option>
+          <option value="møte">🤝 Møte</option>
+        </select>
+      </label>
+      <label>Tittel *<input id="l-tittel" type="text" required placeholder="Kort tittel"></label>
+      <label>Beskrivelse<textarea id="l-tekst" rows="3" placeholder="Detaljer…"></textarea></label>
+      <label>Utført av<input id="l-bruker" type="text" value="Kommuneoverlege"></label>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-logg')">Avbryt</button>
+        <button type="submit" class="btn btn-primary">Loggfør</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="modal-smitte" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Registrer smittetilfelle</h3>
+      <button onclick="closeModal('modal-smitte')" class="close-btn">✕</button>
+    </div>
+    <form onsubmit="leggTilSmitte(event)">
+      <div class="form-row">
+        <label>Navn *<input id="sm-navn" type="text" required placeholder="Fullt navn"></label>
+        <label>Alder *<input id="sm-alder" type="number" min="0" max="120" required></label>
+      </div>
+      <div class="form-row">
+        <label>Kjønn<select id="sm-kjønn"><option>Mann</option><option>Kvinne</option><option>Annet</option></select></label>
+        <label>Status<select id="sm-status"><option value="bekreftet">Bekreftet</option><option value="mistenkt">Mistenkt</option><option value="nærkontakt">Nærkontakt</option></select></label>
+      </div>
+      <div class="form-row">
+        <label>Prøvedato *<input id="sm-prøve" type="date" required></label>
+        <label>Symptomstart<input id="sm-symptom" type="date"></label>
+      </div>
+      <label>Lokasjon *<input id="sm-lokasjon" type="text" required placeholder="Adresse / område"></label>
+      <label>Institusjon<input id="sm-inst" type="text" placeholder="Sykehjem, skole, barnehage…"></label>
+      <label>Smittekilde (tilfelle-ID)<input id="sm-kilde" type="number" placeholder="ID"></label>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-smitte')">Avbryt</button>
+        <button type="submit" class="btn btn-primary">Registrer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: tiltak -->
+<div id="modal-tiltak" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Nytt smitteverntiltak</h3>
+      <button onclick="closeModal('modal-tiltak')" class="close-btn">✕</button>
+    </div>
+    <form onsubmit="leggTilTiltak(event)">
+      <label>Kategori
+        <select id="t-kat">
+          <option value="testing">🧪 Testing</option>
+          <option value="isolasjon">🏠 Isolasjon</option>
+          <option value="kohortering">👥 Kohortering</option>
+          <option value="varsling">📡 Varsling</option>
+          <option value="annet">📋 Annet</option>
+        </select>
+      </label>
+      <label>Tittel *<input id="t-tittel" type="text" required placeholder="Kort tittel"></label>
+      <label>Beskrivelse<textarea id="t-besk" rows="2" placeholder="Detaljer..."></textarea></label>
+      <label>Ansvarlig *<input id="t-ansv" type="text" required placeholder="Rolle / person"></label>
+      <div class="form-row">
+        <label>Status<select id="t-status"><option value="planlagt">Planlagt</option><option value="pågår">Pågår</option><option value="fullført">Fullført</option></select></label>
+        <label>Frist<input id="t-frist" type="date"></label>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-tiltak')">Avbryt</button>
+        <button type="submit" class="btn btn-primary">Lagre tiltak</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: eksponering -->
+<div id="modal-eksponering" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Registrer eksponeringshendelse</h3>
+      <button onclick="closeModal('modal-eksponering')" class="close-btn">✕</button>
+    </div>
+    <form onsubmit="leggTilEksponering(event)">
+      <div class="form-row">
+        <label>Sted *<input id="e-sted" type="text" required placeholder="Navn på sted"></label>
+        <label>Type<select id="e-type"><option value="skole">Skole</option><option value="restaurant">Restaurant</option><option value="transport">Transport</option><option value="arbeidsplass">Arbeidsplass</option><option value="arrangement">Arrangement</option><option value="annet">Annet</option></select></label>
+      </div>
+      <label>Adresse<input id="e-adr" type="text" placeholder="Adresse"></label>
+      <div class="form-row">
+        <label>Dato *<input id="e-dato" type="date" required></label>
+        <label>Tidspunkt<input id="e-tid" type="text" placeholder="f.eks. 18:00–21:00"></label>
+      </div>
+      <label>Antall eksponert<input id="e-ant" type="number" min="0" value="0"></label>
+      <label>Beskrivelse<textarea id="e-besk" rows="2" placeholder="Hva skjedde?"></textarea></label>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-eksponering')">Avbryt</button>
+        <button type="submit" class="btn btn-primary">Registrer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="rapport-modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Situasjonsrapport</h3>
+      <button onclick="closeModal('rapport-modal')" class="close-btn">✕</button>
+    </div>
+    <div id="rapport-tekst" class="rapport-tekst"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="copyRapport()">📋 Kopier</button>
+      <button class="btn btn-primary" onclick="closeModal('rapport-modal')">Lukk</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
